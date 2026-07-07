@@ -508,65 +508,52 @@ const EXERCISES = {
   ]
 };
 
-let state = { weekNum:1, streak:0, weekProgress:{day1:false,day2:false,day3:false,day4:false,day5:false,day6:false}, log:{} };
+const STORAGE_KEY = 'six-day-protocol-v1';
+const DEFAULT_STATE = { weekNum:1, streak:0, weekProgress:{day1:false,day2:false,day3:false,day4:false,day5:false,day6:false}, log:{} };
+let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
 let storageReady = false;
+let saveTimer = null;
 
-function todayKey(){ return new Date().toISOString().slice(0,10); }
-
-async function loadState(){
+function loadState(){
   try{
-    const r = await window.storage.get('app-state', false);
-    if(r && r.value){
-      const parsed = JSON.parse(r.value);
-      state = Object.assign({weekNum:1, streak:0, weekProgress:{day1:false,day2:false,day3:false,day4:false,day5:false,day6:false}, log:{}}, parsed);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), parsed);
+      if(!state.log) state.log = {};
     }
   }catch(e){
-    // No saved state yet (first run) or key not found — start fresh, this is expected.
+    state = JSON.parse(JSON.stringify(DEFAULT_STATE));
   }
   storageReady = true;
   render();
 }
 
-let saveQueued = false;
-let saveRetryTimer = null;
+let saveDebounce = null;
 
-async function saveState(){
-  try{
-    const result = await window.storage.set('app-state', JSON.stringify(state), false);
-    if(!result){
-      scheduleRetrySave();
-    } else {
-      setSaveIndicator('saved');
-    }
-  }catch(e){
-    scheduleRetrySave();
-  }
-}
-
-function scheduleRetrySave(){
-  setSaveIndicator('retry');
-  if(saveRetryTimer) clearTimeout(saveRetryTimer);
-  saveRetryTimer = setTimeout(async ()=>{
+function saveState(){
+  if(saveDebounce) clearTimeout(saveDebounce);
+  saveDebounce = setTimeout(()=>{
     try{
-      const result = await window.storage.set('app-state', JSON.stringify(state), false);
-      setSaveIndicator(result ? 'saved' : 'offline');
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      setSaveIndicator('saved');
     }catch(e){
-      setSaveIndicator('offline');
+      setSaveIndicator('error');
     }
-  }, 1500);
+  }, 300);
 }
 
 function setSaveIndicator(status){
   const el = document.getElementById('saveStatus');
   if(!el) return;
   if(status === 'saved'){
-    el.textContent = '';
-    el.style.opacity = '0';
-  } else if(status === 'retry'){
-    el.textContent = 'saving…';
+    el.textContent = '● saved';
+    el.style.color = 'var(--good)';
     el.style.opacity = '1';
-  } else if(status === 'offline'){
-    el.textContent = 'not saved — check connection';
+    setTimeout(()=>{ el.style.opacity='0'; }, 1200);
+  } else if(status === 'error'){
+    el.textContent = 'not saved — storage full or blocked';
+    el.style.color = 'var(--warn)';
     el.style.opacity = '1';
   }
 }
@@ -835,7 +822,7 @@ function selectInitialTab(){
   }
 }
 
-loadState().then(()=>{ selectInitialTab(); });
+loadState(); selectInitialTab();
 </script>
 
 </body>
